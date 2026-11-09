@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.ts",
     "test": "node --test \"test/**/*.test.ts\"",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "diff": "node src/diffSpreadsheet.ts"
   },
   "type": "module",
   "dependencies": {
@@ -16,7 +17,6 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
-    "exceljs": "^4.4.0",
     "typescript": "^7.0.2"
   },
   "private": true,

@@ -1,10 +1,9 @@
-import express from "express";
-import { stubStatement } from "./stub.ts";
+import { createApp } from "./app.ts";
+import { loadLedger } from "./ledger.ts";
 
-const app = express();
-app.get("/income-statement", (_req, res) => {
-  res.json(stubStatement);
-});
-
+const ledger = loadLedger(); // throws, and the server does not start, if the data is bad
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, () => console.log(`Backend listening on http://localhost:${port}`));
+createApp(ledger).listen(port, (error?: Error) => {
+  if (error) throw error; // for example, the port is already in use
+  console.log(`Backend listening on http://localhost:${port}`);
+});

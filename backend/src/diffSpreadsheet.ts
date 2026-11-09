@@ -1,12 +1,20 @@
 // Compares a CSV export of the spreadsheet's "Income Statement" tab with the app's numbers.
 //
-//   npm run diff -- path/to/income-statement.csv
+//   npm run diff     (newest of ~/Desktop/ledger-check.numbers and scripts/ledger-check.xlsx)
+//   npm run diff -- path/to/ledger-check.xlsx        (.xlsx, .numbers, or a CSV export of the Income Statement tab)
+//
+// The path can be absolute, start with ~, or be relative to the folder you ran the command in.
 //
 // It reads the start and end dates from the CSV (rows "Start date" and "End date"),
 // runs the same calculation the API uses for those dates, and prints every row side by side.
 // Exits with code 1 if any row differs.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isValidDate } from "./dates.ts";
 import { buildIncomeStatement, type IncomeStatement } from "./incomeStatement.ts";
 import { loadLedger } from "./ledger.ts";
@@ -114,21 +122,69 @@ export function diffSpreadsheet(csvText: string, ledger = loadLedger()) {
   return { start, end, diff };
 }
 
+const SOFFICE = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
+
+/**
+ * Exports the first tab (Income Statement) of a spreadsheet to CSV with LibreOffice, headless.
+ * Values are the ones last saved in the file, formatted as shown.
+ */
+function spreadsheetToCsv(path: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "statement-diff-"));
+  // CSV options: comma, double quote, UTF-8, start row 1, no column formats, language,
+  // quote text, detect numbers, save cell content as shown, ..., sheet 1.
+  const filter = "csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,1";
+  execFileSync(SOFFICE, [
+    `-env:UserInstallation=file://${join(dir, "profile")}`, // separate profile, so an open LibreOffice window does not interfere
+    "--headless", "--convert-to", filter, "--outdir", dir, path,
+  ], { stdio: "ignore" });
+  const csv = readdirSync(dir).find((f) => f.endsWith(".csv"));
+  if (!csv) throw new Error(`LibreOffice did not export ${path}`);
+  return readFileSync(join(dir, csv), "utf8");
+}
+
+/** Has Numbers export a .numbers file to a temporary .xlsx (values as last saved in Numbers). */
+function numbersToXlsx(path: string): string {
+  const out = join(mkdtempSync(join(tmpdir(), "statement-diff-")), "sheet.xlsx");
+  const script = [
+    "on run argv",
+    '  tell application "Numbers"',
+    "    set doc to open (POSIX file (item 1 of argv))",
+    "    export doc to (POSIX file (item 2 of argv)) as Microsoft Excel with properties {exclude summary worksheet:true}",
+    "  end tell",
+    "end run",
+  ].join("\n");
+  execFileSync("osascript", ["-e", script, path, out], { stdio: ["ignore", "ignore", "inherit"] });
+  return out;
+}
+
+/** Default files, newest first: the Numbers copy on the Desktop, then the .xlsx in scripts/. */
+function newestDefaultSpreadsheet(): string {
+  const candidates = [
+    join(homedir(), "Desktop", "ledger-check.numbers"),
+    fileURLToPath(new URL("../../scripts/ledger-check.xlsx", import.meta.url)),
+  ].filter((p) => existsSync(p));
+  candidates.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  return candidates[0] ?? "scripts/ledger-check.xlsx";
+}
+
 function main() {
-  const path = process.argv[2];
-  if (!path) {
-    console.error("Usage: npm run diff -- path/to/income-statement.csv");
-    process.exit(2);
-  }
+  // No path given: whichever copy of the spreadsheet was saved most recently.
+  const arg = process.argv[2] ?? newestDefaultSpreadsheet();
+  // npm run moves into backend/, so resolve against the folder the command was typed in (INIT_CWD).
+  const path = resolve(process.env.INIT_CWD ?? process.cwd(), arg.replace(/^~(?=\/|$)/, homedir()));
   if (!existsSync(path)) {
     console.error(`No file at ${path}.`);
-    console.error('Export it first: in LibreOffice, open the "Income Statement" tab, then File > Save As > Text CSV.');
     process.exit(2);
   }
-  const { start, end, diff } = diffSpreadsheet(readFileSync(path, "utf8"));
+  const lower = path.toLowerCase();
+  const csv = lower.endsWith(".csv")
+    ? readFileSync(path, "utf8")
+    : spreadsheetToCsv(lower.endsWith(".numbers") ? numbersToXlsx(path) : path);
+  const { start, end, diff } = diffSpreadsheet(csv);
   const show = (c: bigint | null) => (c === null ? "(none)" : formatCents(c));
   const width = Math.max(...diff.map((d) => d.label.length), 10);
 
+  console.log(`File: ${path} (last saved ${statSync(path).mtime.toLocaleString()})`);
   console.log(`Income statement ${start} to ${end} (both days included)\n`);
   console.log(`${"Row".padEnd(width)}  ${"Spreadsheet".padStart(14)}  ${"App".padStart(14)}  ${"Difference".padStart(12)}`);
   let mismatches = 0;

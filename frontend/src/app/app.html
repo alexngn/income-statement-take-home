@@ -1,0 +1,55 @@
+<main>
+  <h1>Income statement</h1>
+
+  <form (ngSubmit)="load()">
+    <label>
+      Start
+      <input type="date" name="start" [(ngModel)]="start" required />
+    </label>
+    <label>
+      End
+      <input type="date" name="end" [(ngModel)]="end" required />
+    </label>
+    <button type="submit">Show</button>
+  </form>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  @if (statement(); as statement) {
+    <p class="period">{{ statement.company }}, {{ statement.start }} to {{ statement.end }}</p>
+
+    <table>
+      @for (row of rows; track row.key) {
+        @if (row.kind === 'section') {
+          <tr class="section-title">
+            <th colspan="2">{{ row.label }}</th>
+          </tr>
+          @for (line of section(row.key).lines; track line.account) {
+            <tr>
+              <td class="account">{{ line.account }} {{ line.name }}</td>
+              <td class="amount">{{ line.amount | currency: statement.currency }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="account muted">No activity</td>
+              <td></td>
+            </tr>
+          }
+          <tr class="section-total">
+            <td>Total {{ row.label | lowercase }}</td>
+            <td class="amount">{{ section(row.key).total | currency: statement.currency }}</td>
+          </tr>
+        }
+
+        @if (row.kind === 'subtotal') {
+          <tr class="subtotal">
+            <td>{{ row.label }}</td>
+            <td class="amount">{{ subtotal(row.key) | currency: statement.currency }}</td>
+          </tr>
+        }
+      }
+    </table>
+  }
+</main>

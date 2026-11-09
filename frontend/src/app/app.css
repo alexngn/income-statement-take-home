@@ -1,0 +1,65 @@
+main {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 0 16px;
+  font-family: system-ui, sans-serif;
+}
+
+form {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.period {
+  color: #555;
+}
+
+.error {
+  color: #b00020;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td,
+th {
+  padding: 4px 0;
+  text-align: left;
+}
+
+.amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-title th {
+  padding-top: 16px;
+}
+
+.account {
+  padding-left: 16px;
+}
+
+.muted {
+  color: #888;
+}
+
+.section-total td {
+  border-top: 1px solid #ccc;
+}
+
+.subtotal td {
+  font-weight: bold;
+  border-top: 2px solid #333;
+  padding: 8px 0;
+}

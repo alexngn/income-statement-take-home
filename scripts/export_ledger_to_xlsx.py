@@ -1,7 +1,7 @@
 """Export ledger.json into a spreadsheet with formulas for checking by hand.
 
-Run from the repo root:  python3 validation/export_ledger_to_xlsx.py
-Writes validation/ledger-check.xlsx. Every computed cell is a formula, so the
+Run from the repo root:  python3 scripts/export_ledger_to_xlsx.py
+Writes scripts/ledger-check.xlsx. Every computed cell is a formula, so the
 numbers come from the spreadsheet, not from this script or the app.
 """
 import json
@@ -12,11 +12,10 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Font, PatternFill
-from openpyxl.worksheet.datavalidation import DataValidation
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = json.loads((ROOT / "ledger.json").read_text())
-OUT = ROOT / "validation" / "ledger-check.xlsx"
+OUT = ROOT / "scripts" / "ledger-check.xlsx"
 
 FONT = "Arial"
 BOLD = Font(name=FONT, bold=True)

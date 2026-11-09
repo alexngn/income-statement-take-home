@@ -6,7 +6,7 @@
 // runs the same calculation the API uses for those dates, and prints every row side by side.
 // Exits with code 1 if any row differs.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isValidDate } from "./dates.ts";
 import { buildIncomeStatement, type IncomeStatement } from "./incomeStatement.ts";
 import { loadLedger } from "./ledger.ts";
@@ -118,6 +118,11 @@ function main() {
   const path = process.argv[2];
   if (!path) {
     console.error("Usage: npm run diff -- path/to/income-statement.csv");
+    process.exit(2);
+  }
+  if (!existsSync(path)) {
+    console.error(`No file at ${path}.`);
+    console.error('Export it first: in LibreOffice, open the "Income Statement" tab, then File > Save As > Text CSV.');
     process.exit(2);
   }
   const { start, end, diff } = diffSpreadsheet(readFileSync(path, "utf8"));

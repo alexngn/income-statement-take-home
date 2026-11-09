@@ -21,14 +21,16 @@ Planned stack: Node backend (`GET /income-statement?start&end`), Angular fronten
   - Run: `cd backend && npm install && npm start`; test: `npm test`; types: `npm run typecheck`.
 
 - `frontend/` (Angular 22, standalone, no router, loose TS on purpose, no ternaries):
-  - `src/app/report-layout.ts`: `REPORT_ROWS`, the statement's row order (section or subtotal). Add rows here.
-  - `src/app/income-statement.service.ts`: `IncomeStatementService.load(start, end)` -> `GET /income-statement`.
-  - `src/app/app.ts` / `app.html` / `app.css`: date form, `load()`, `section(key)`, `subtotal(key)`, table.
+  - `src/app/report-layout.ts`: `REPORT_ROWS`, the statement's row order (section or subtotal, with `totalLabel`). Add rows here.
+  - `src/app/income-statement.service.ts`: response interfaces; `IncomeStatementService` with `start`/`end` signals and `statement = httpResource(...)` that refetches when either changes; `errorMessage()`.
+  - `src/app/money.pipe.ts`: `MoneyPipe` (`| money`), string-only formatting, negatives in parentheses.
+  - `src/app/app.ts` / `app.html` / `app.css`: date inputs set the service signals (`setStart`/`setEnd`), table from `service.statement`, `section()`, `subtotal()`.
   - `proxy.conf.json`: dev server forwards `/income-statement` to `localhost:3000`.
   - Run: `cd frontend && npm install && npm start` (port 4200); build: `npx ng build`.
 - `CODE_PATH.md`: step-by-step path from the date inputs through the backend and back to the table.
 
 ## Data flow
+date input -> service `start`/`end` signals -> `httpResource` refetches -> GET /income-statement (proxied to :3000) -> table via `REPORT_ROWS` + `MoneyPipe`.
 date strings -> app.ts validates -> buildIncomeStatement filters posted entries in [start, end], sums cents per account (revenue credit-debit, expense debit-credit), groups by subtype -> toResponse -> JSON.
 
 ## Gotchas

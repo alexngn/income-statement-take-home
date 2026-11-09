@@ -1,35 +1,42 @@
 <main>
   <h1>Income statement</h1>
 
-  <form (ngSubmit)="load()">
+  <div class="dates">
     <label>
       Start
-      <input type="date" name="start" [(ngModel)]="start" required />
+      <input type="date" [value]="service.start()" (change)="setStart($event)" />
     </label>
     <label>
       End
-      <input type="date" name="end" [(ngModel)]="end" required />
+      <input type="date" [value]="service.end()" (change)="setEnd($event)" />
     </label>
-    <button type="submit">Show</button>
-  </form>
+    @if (service.statement.isLoading()) {
+      <span class="muted">Loading…</span>
+    }
+  </div>
 
-  @if (error()) {
-    <p class="error">{{ error() }}</p>
+  @if (service.statement.error(); as error) {
+    <p class="error">{{ service.errorMessage(error) }}</p>
   }
 
-  @if (statement(); as statement) {
-    <p class="period">{{ statement.company }}, {{ statement.start }} to {{ statement.end }}</p>
+  @if (service.statement.hasValue()) {
+    @let statement = service.statement.value();
+    <p class="period">
+      {{ statement.company }}<br />
+      For the period {{ statement.start }} to {{ statement.end }} (both days included), in {{ statement.currency }}
+    </p>
 
     <table>
       @for (row of rows; track row.key) {
         @if (row.kind === 'section') {
+          @let section = this.section(statement, row.key);
           <tr class="section-title">
             <th colspan="2">{{ row.label }}</th>
           </tr>
-          @for (line of section(row.key).lines; track line.account) {
+          @for (line of section.lines; track line.account) {
             <tr>
               <td class="account">{{ line.account }} {{ line.name }}</td>
-              <td class="amount">{{ line.amount | currency: statement.currency }}</td>
+              <td class="amount">{{ line.amount | money }}</td>
             </tr>
           } @empty {
             <tr>
@@ -38,15 +45,15 @@
             </tr>
           }
           <tr class="section-total">
-            <td>Total {{ row.label | lowercase }}</td>
-            <td class="amount">{{ section(row.key).total | currency: statement.currency }}</td>
+            <td>{{ row.totalLabel }}</td>
+            <td class="amount">{{ section.total | money }}</td>
           </tr>
         }
 
         @if (row.kind === 'subtotal') {
           <tr class="subtotal">
             <td>{{ row.label }}</td>
-            <td class="amount">{{ subtotal(row.key) | currency: statement.currency }}</td>
+            <td class="amount">{{ subtotal(statement, row.key) | money }}</td>
           </tr>
         }
       }

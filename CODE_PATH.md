@@ -4,15 +4,13 @@ Line numbers are as of when this was written; the function names are the stable 
 
 ## 1. The user picks dates (browser)
 
-- `frontend/src/app/app.html:7` and `:11`: two `<input type="date">` boxes bound with `[(ngModel)]` to `start` and `end`.
-- `frontend/src/app/app.ts:19-20`: those fields, defaulting to `2026-01-01` and `2026-03-31`. The browser gives the value as a `YYYY-MM-DD` string.
-- `frontend/src/app/app.html:4`: pressing **Show** submits the form, which calls `load()`. `load()` also runs once from the `constructor` (`app.ts:25`), so the page opens with Q1 2026 already shown.
+- `frontend/src/app/income-statement.service.ts` `IncomeStatementService`: owns the range as two signals, `start` and `end` (YYYY-MM-DD strings, default `2026-01-01` to `2026-03-31`).
+- `frontend/src/app/app.html`: two `<input type="date">` boxes. Each shows the signal's value (`[value]="service.start()"`) and on `(change)` calls `setStart` / `setEnd` in `app.ts`, which `set()` the signal. There is no Show button.
 
-## 2. The request is sent
+## 2. The request is sent (automatically)
 
-- `frontend/src/app/app.ts:29` `App.load()`: clears any old error, then calls `IncomeStatementService.load(start, end)`.
-- `frontend/src/app/income-statement.service.ts:11` `load()`: `HttpClient.get('/income-statement', { params: { start, end } })`, which becomes
-  `GET /income-statement?start=2026-01-01&end=2026-03-31`.
+- `income-statement.service.ts` `statement = httpResource<IncomeStatement>(() => ...)`: the function reads `start()` and `end()`, so Angular reruns it whenever either signal changes and sends
+  `GET /income-statement?start=2026-01-01&end=2026-03-31`. A request still in flight is cancelled. If a date box is cleared, it returns `undefined` and no request is made.
 - `frontend/proxy.conf.json`: in development, `ng serve` forwards `/income-statement` to `http://localhost:3000` (the backend), so the browser never needs CORS.
 
 ## 3. The backend receives it
@@ -54,16 +52,17 @@ Line numbers are as of when this was written; the function names are the stable 
 }
 ```
 
-- Success: `app.ts:31` `next` stores it in the `statement` signal.
-- Failure: `error` stores the backend's `{ "error": "..." }` message (or a "backend not running" message) in the `error` signal, which `app.html` shows in red.
+- The resource exposes it as signals: `statement.value()`, `statement.isLoading()`, `statement.error()`.
+- Success: `app.html` draws the table when `statement.hasValue()`.
+- Failure: `service.errorMessage(error)` picks the backend's `{ "error": "..." }` message (or a "backend not running" message), shown in red.
 
 ## 6. The page draws the statement
 
 - `frontend/src/app/report-layout.ts` `REPORT_ROWS`: the seven rows, top to bottom: Revenue, Cost of goods sold, Gross profit, Operating expenses, Operating income, Other income, Net income. Each row is a `section` (looked up in `sections` by `key`) or a `subtotal` (read from the top-level field named `key`).
-- `frontend/src/app/app.html:24` loops over `REPORT_ROWS`:
-  - a section row prints its account lines (`section(row.key).lines`, `app.ts:41`) and its total;
-  - a subtotal row prints `subtotal(row.key)` (`app.ts:46`) in bold.
-- Amounts are formatted with Angular's `currency` pipe using the statement's `currency`.
+- `frontend/src/app/app.html` loops over `REPORT_ROWS`:
+  - a section row prints its account lines (`section(statement, row.key).lines`) and its total, labelled with `row.totalLabel` (for example "Net revenue");
+  - a subtotal row prints `subtotal(statement, row.key)` in bold.
+- `frontend/src/app/money.pipe.ts` `MoneyPipe` formats each amount string: commas, two decimals, negatives in parentheses (`"-44480.14"` -> `(44,480.14)`). It never converts to a number.
 
 To add a line to the statement (for example "Income before taxes"), have the backend return it, then add one entry to `REPORT_ROWS`. No template change is needed.
 

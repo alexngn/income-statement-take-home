@@ -15,25 +15,30 @@ Line numbers are as of when this was written; the function names are the stable 
 
 ## 3. The backend receives it
 
-- `backend/src/index.ts:4`: at startup, `loadLedger()` (`backend/src/ledger.ts:59`) reads `ledger.json`, validates it and turns every amount into BigInt cents (`toCents`, `backend/src/money.ts:7`). Bad data stops the server from starting.
-- `backend/src/app.ts:10`: the `GET /income-statement` route.
-  - `:12` both dates must pass `isValidDate` (`backend/src/dates.ts:7`), else **400**.
-  - `:16` `start` must be on or before `end`, else **400**.
-  - `:20` `res.json(toResponse(buildIncomeStatement(ledger, start, end)))`.
+Flow: request -> Express router -> service -> DAO -> service -> aggregate helpers -> router -> response.
+
+- `backend/src/index.ts`: wiring at startup. `LedgerDao.fromFile()` reads `ledger.json` through `loadLedger()` (`backend/src/dao/ledgerFile.ts`), which validates it and turns every amount into BigInt cents (`toCents`, `backend/src/helpers/money.ts`). Bad data stops the server from starting. Then `new IncomeStatementService(dao)` and `createApp(service)`.
+- `backend/src/app.ts` `createApp`: mounts the router at `/income-statement`, plus a JSON error handler for unexpected errors (500).
+- `backend/src/routes/incomeStatement.routes.ts` `incomeStatementRouter`:
+  - `GET /` reads `start` and `end` from the query string.
+  - `parseDateRange` (`backend/src/helpers/dateRange.ts`): both must be real `YYYY-MM-DD` dates (`isValidDate`, `helpers/dates.ts`) and `start <= end`, else **400** `{ "error": "..." }`.
+  - Calls `service.getIncomeStatement(start, end)`, then `res.json(toResponse(statement))`.
 
 ## 4. The accounting
 
-`backend/src/incomeStatement.ts:42` `buildIncomeStatement(ledger, start, end)`, a pure function:
+`backend/src/services/incomeStatement.service.ts` `IncomeStatementService.getIncomeStatement(start, end)`:
 
-1. `:46-47` keeps only `posted` entries dated within `start..end` (both days included).
-2. `:52` nets each income statement account: revenue is credit minus debit, expenses are debit minus credit. Balance sheet accounts are skipped.
-3. `:58` groups accounts into the four sections in `SECTIONS` (revenue, cogs, operating_expenses, other_income) by account `subtype`.
-4. `:68-70` subtotals:
-   - Gross profit = Revenue - Cost of goods sold
-   - Operating income = Gross profit - Operating expenses
-   - Net income = Operating income + Other income
-
-`:85` `toResponse` turns every cents value into a decimal string such as `"-44480.14"` (`formatCents`, `backend/src/money.ts:15`), so no amount ever passes through a JavaScript float.
+1. **Data from the DAO** (`backend/src/dao/ledger.dao.ts` `LedgerDao`):
+   - `getCompany()`, `getAccounts({ incomeStatementOnly: true })` (chart order).
+   - `findLines({ start, end, incomeStatementOnly: true })`: like a SQL query over a view. It returns journal lines of `posted` entries dated `start..end` (both days included), each already joined with its entry id, date and account. Drafts, voids and balance sheet accounts are filtered out here.
+2. **Numbers from the aggregate helpers** (`backend/src/helpers/aggregate.ts`):
+   - `sumByAccount(lines)`: nets each account with `signedAmount`: revenue is credit minus debit, expenses are debit minus credit.
+   - `groupIntoSections(accounts, amounts)`: the four `SECTIONS` (revenue, cogs, operating_expenses, other_income) by account `subtype`; accounts with no activity are left out, every section is kept.
+   - `computeSubtotals(sections)`:
+     - Gross profit = Revenue - Cost of goods sold
+     - Operating income = Gross profit - Operating expenses
+     - Net income = Operating income + Other income
+3. Back in the router, `toResponse` (`backend/src/helpers/format.ts`) turns every cents value into a decimal string such as `"-44480.14"` (`formatCents`), so no amount ever passes through a JavaScript float.
 
 ## 5. The response comes back
 

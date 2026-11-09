@@ -3,8 +3,8 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isValidDate } from "./dates.ts";
-import { toCents } from "./money.ts";
+import { isValidDate } from "../helpers/dates.ts";
+import { toCents } from "../helpers/money.ts";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 export type SectionKey = "revenue" | "cogs" | "operating_expenses" | "other_income";
@@ -54,7 +54,7 @@ export interface Ledger {
 }
 
 /** ledger.json at the repo root. */
-export const LEDGER_PATH = fileURLToPath(new URL("../../ledger.json", import.meta.url));
+export const LEDGER_PATH = fileURLToPath(new URL("../../../ledger.json", import.meta.url));
 
 export function loadLedger(path: string = LEDGER_PATH): Ledger {
   return parseLedger(JSON.parse(readFileSync(path, "utf8")));

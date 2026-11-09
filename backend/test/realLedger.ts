@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
-import { LEDGER_PATH, parseLedger, type Ledger } from "../src/ledger.ts";
+import { LedgerDao } from "../src/dao/ledger.dao.ts";
+import { LEDGER_PATH, parseLedger, type Ledger } from "../src/dao/ledgerFile.ts";
+import { IncomeStatementService } from "../src/services/incomeStatement.service.ts";
 
 /** A fresh copy of the raw ledger.json, safe to change inside one test. */
 export function rawLedger() {
@@ -14,3 +16,8 @@ export function ledgerAfter(change: (raw: any) => void): Ledger {
 }
 
 export const entryById = (raw: any, id: string) => raw.journal_entries.find((e: any) => e.id === id);
+
+/** The service wired to a ledger, as index.ts wires it (DAO -> service). */
+export function serviceFor(ledger: Ledger): IncomeStatementService {
+  return new IncomeStatementService(new LedgerDao(ledger));
+}

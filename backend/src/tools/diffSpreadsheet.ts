@@ -6,19 +6,18 @@
 // The path can be absolute, start with ~, or be relative to the folder you ran the command in.
 //
 // It reads the start and end dates from the CSV (rows "Start date" and "End date"),
-// runs the same calculation the API uses for those dates, and prints every row side by side.
+// runs the same service the API uses for those dates, and prints every row side by side.
 // Exits with code 1 if any row differs.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isValidDate } from "./dates.ts";
-import { buildIncomeStatement, type IncomeStatement } from "./incomeStatement.ts";
-import { loadLedger } from "./ledger.ts";
-import { formatCents } from "./money.ts";
+import { LedgerDao } from "../dao/ledger.dao.ts";
+import { isValidDate } from "../helpers/dates.ts";
+import { formatCents } from "../helpers/money.ts";
+import { IncomeStatementService, type IncomeStatement } from "../services/incomeStatement.service.ts";
 
 /** Minimal CSV parser: commas, double-quoted fields, "" as an escaped quote. */
 export function parseCsv(text: string): string[][] {
@@ -79,7 +78,7 @@ interface DiffRow {
   app: bigint | null;
 }
 
-export function diffSpreadsheet(csvText: string, ledger = loadLedger()) {
+export function diffSpreadsheet(csvText: string, service = new IncomeStatementService(LedgerDao.fromFile())) {
   const rows = parseCsv(csvText);
   const findDate = (prefix: string) => {
     const row = rows.find((r) => r[0]?.trim().toLowerCase().startsWith(prefix));
@@ -91,7 +90,7 @@ export function diffSpreadsheet(csvText: string, ledger = loadLedger()) {
   };
   const start = findDate("start date");
   const end = findDate("end date");
-  const statement = buildIncomeStatement(ledger, start, end);
+  const statement = service.getIncomeStatement(start, end);
 
   const appByAccount = new Map<string, bigint>();
   for (const s of statement.sections) for (const l of s.lines) appByAccount.set(l.account, l.amount);
@@ -161,7 +160,7 @@ function numbersToXlsx(path: string): string {
 function newestDefaultSpreadsheet(): string {
   const candidates = [
     join(homedir(), "Desktop", "ledger-check.numbers"),
-    fileURLToPath(new URL("../../scripts/ledger-check.xlsx", import.meta.url)),
+    fileURLToPath(new URL("../../../scripts/ledger-check.xlsx", import.meta.url)),
   ].filter((p) => existsSync(p));
   candidates.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
   return candidates[0] ?? "scripts/ledger-check.xlsx";

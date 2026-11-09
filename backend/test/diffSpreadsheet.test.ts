@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { diffSpreadsheet, displayToCents, parseCsv } from "../src/diffSpreadsheet.ts";
+import { diffSpreadsheet, displayToCents, parseCsv } from "../src/tools/diffSpreadsheet.ts";
 
-test("displayToCents reads spreadsheet display text without floats", () => {
+test("diff tool: reads spreadsheet text like \"(800.25)\" and \"35,650.75\" into exact cents", () => {
   assert.equal(displayToCents("35,650.75"), 3565075n);
   assert.equal(displayToCents("(800.25)"), -80025n);
   assert.equal(displayToCents("-44,480.14"), -4448014n);
@@ -12,7 +12,7 @@ test("displayToCents reads spreadsheet display text without floats", () => {
   assert.equal(displayToCents("abc"), null);
 });
 
-test("parseCsv handles quoted fields with commas and quotes", () => {
+test("diff tool: the CSV parser keeps commas and quotes inside quoted fields", () => {
   assert.deepEqual(parseCsv('a,"1,000.00","say ""hi"""\r\nb,2\n'), [["a", "1,000.00", 'say "hi"'], ["b", "2"]]);
 });
 
@@ -40,14 +40,14 @@ const januaryCsv = (productRevenue: string) => [
   'Net income,,"(21,529.65)",,',
 ].join("\n");
 
-test("diff finds no difference when the CSV matches January 2026", () => {
+test("diff tool: reports no differences when the spreadsheet matches the app (January 2026)", () => {
   const { start, end, diff } = diffSpreadsheet(januaryCsv("12,450.75"));
   assert.deepEqual([start, end], ["2026-01-01", "2026-01-31"]);
   assert.equal(diff.length, 16); // 9 income statement accounts + 7 totals
   assert.deepEqual(diff.filter((d) => d.sheet !== d.app), []);
 });
 
-test("diff flags the one row that differs", () => {
+test("diff tool: flags exactly the one row that differs (4000 off by 0.01)", () => {
   const { diff } = diffSpreadsheet(januaryCsv("12,450.76"));
   assert.deepEqual(diff.filter((d) => d.sheet !== d.app).map((d) => d.label), ["4000 Product Revenue"]);
 });

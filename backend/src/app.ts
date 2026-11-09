@@ -1,23 +1,15 @@
-import express from "express";
-import { isValidDate } from "./dates.ts";
-import { buildIncomeStatement, toResponse } from "./incomeStatement.ts";
-import type { Ledger } from "./ledger.ts";
+import express, { type NextFunction, type Request, type Response } from "express";
+import { incomeStatementRouter } from "./routes/incomeStatement.routes.ts";
+import type { IncomeStatementService } from "./services/incomeStatement.service.ts";
 
-export function createApp(ledger: Ledger) {
+export function createApp(incomeStatementService: IncomeStatementService) {
   const app = express();
+  app.use("/income-statement", incomeStatementRouter(incomeStatementService));
 
-  // GET /income-statement?start=YYYY-MM-DD&end=YYYY-MM-DD (both days included)
-  app.get("/income-statement", (req, res) => {
-    const { start, end } = req.query;
-    if (!isValidDate(start) || !isValidDate(end)) {
-      res.status(400).json({ error: "start and end are required, as real dates in YYYY-MM-DD form" });
-      return;
-    }
-    if (start > end) {
-      res.status(400).json({ error: "start must be on or before end" });
-      return;
-    }
-    res.json(toResponse(buildIncomeStatement(ledger, start, end)));
+  // Unexpected errors as JSON instead of Express's HTML page.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
   });
 
   return app;

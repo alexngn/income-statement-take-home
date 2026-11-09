@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { createApp } from "../src/app.ts";
-import { loadLedger } from "../src/ledger.ts";
+import { LedgerDao } from "../src/dao/ledger.dao.ts";
+import { IncomeStatementService } from "../src/services/incomeStatement.service.ts";
 
 let base = "";
 let close = () => {};
 before(async () => {
-  const server = createApp(loadLedger()).listen(0);
+  const server = createApp(new IncomeStatementService(LedgerDao.fromFile())).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
@@ -16,7 +17,8 @@ after(() => close());
 
 const get = (query: string) => fetch(`${base}/income-statement${query}`);
 
-test("GET /income-statement for Q1 2026 over HTTP", async () => {
+
+test("HTTP: GET /income-statement for Q1 2026 returns every section and net income -44480.14", async () => {
   const res = await get("?start=2026-01-01&end=2026-03-31");
   assert.equal(res.status, 200);
   const body = await res.json();
@@ -30,7 +32,7 @@ test("GET /income-statement for Q1 2026 over HTTP", async () => {
   assert.deepEqual(body.sections[0].lines[2], { account: "4900", name: "Sales Returns & Discounts", amount: "-800.25" });
 });
 
-test("400 for missing, malformed, impossible or reversed dates", async () => {
+test("HTTP: GET returns 400 with an error message for missing, malformed, impossible or reversed dates", async () => {
   for (const q of ["", "?start=2026-01-01", "?start=2026-1-1&end=2026-01-31", "?start=2026-02-30&end=2026-03-01",
     "?start=2026-02-01&end=2026-01-01", "?start=2026-01-01&start=2026-01-02&end=2026-01-31"]) {
     const res = await get(q);
@@ -38,3 +40,4 @@ test("400 for missing, malformed, impossible or reversed dates", async () => {
     assert.ok((await res.json()).error, q);
   }
 });
+

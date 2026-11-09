@@ -8,7 +8,7 @@
     "start": "node src/index.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc",
-    "diff": "node src/diffSpreadsheet.ts"
+    "diff": "node src/tools/diffSpreadsheet.ts"
   },
   "type": "module",
   "dependencies": {

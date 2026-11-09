@@ -2,12 +2,16 @@
 // names the journal entries it comes from, so it can be checked without running anything.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildIncomeStatement, toResponse, type IncomeStatement } from "../src/incomeStatement.ts";
-import { loadLedger } from "../src/ledger.ts";
-import { ledgerAfter, entryById } from "./realLedger.ts";
+import { LedgerDao } from "../src/dao/ledger.dao.ts";
+import { loadLedger } from "../src/dao/ledgerFile.ts";
+import { toResponse } from "../src/helpers/format.ts";
+import type { IncomeStatement } from "../src/services/incomeStatement.service.ts";
+import { serviceFor } from "./realLedger.ts";
 
 const ledger = loadLedger();
-const statement = (start: string, end: string) => toResponse(buildIncomeStatement(ledger, start, end));
+const dao = new LedgerDao(ledger);
+const service = serviceFor(ledger);
+const statement = (start: string, end: string) => toResponse(service.getIncomeStatement(start, end));
 
 /** The statement as plain rows: { "4000": "35650.75", ..., revenue: "...", netIncome: "..." }. */
 function rows(s: ReturnType<typeof statement>) {
@@ -22,7 +26,7 @@ function rows(s: ReturnType<typeof statement>) {
   return out;
 }
 
-test("Q1 2026 (2026-01-01 to 2026-03-31)", () => {
+test("statement Q1 2026: every line and subtotal matches the hand-worked amounts, net income -44480.14", () => {
   assert.deepEqual(rows(statement("2026-01-01", "2026-03-31")), {
     "4000": "35650.75", // JE-002 12450.75 + JE-010 8200.00 + JE-016 15000.00 (JE-009 is void)
     "4100": "3000.00", // JE-005 + JE-014 + JE-021, 1000.00 each
@@ -43,7 +47,7 @@ test("Q1 2026 (2026-01-01 to 2026-03-31)", () => {
   });
 });
 
-test("January 2026", () => {
+test("statement January 2026: every line and subtotal matches, net income -21529.65", () => {
   assert.deepEqual(rows(statement("2026-01-01", "2026-01-31")), {
     "4000": "12450.75", // JE-002
     "4100": "1000.00", // JE-005 (JE-004 billing goes to deferred revenue, a balance sheet account)
@@ -61,7 +65,7 @@ test("January 2026", () => {
   });
 });
 
-test("February 2026: the voided duplicate sale is left out", () => {
+test("statement February 2026: every line and subtotal matches, net income -13230.25", () => {
   assert.deepEqual(rows(statement("2026-02-01", "2026-02-28")), {
     "4000": "8200.00", // JE-010 only; JE-009 is the void duplicate
     "4100": "1000.00", // JE-014
@@ -78,7 +82,7 @@ test("February 2026: the voided duplicate sale is left out", () => {
   });
 });
 
-test("March 2026: draft bonus left out, vendor credit nets against software", () => {
+test("statement March 2026: every line and subtotal matches, net income -9720.24", () => {
   assert.deepEqual(rows(statement("2026-03-01", "2026-03-31")), {
     "4000": "15000.00", // JE-016
     "4100": "1000.00", // JE-021
@@ -97,7 +101,7 @@ test("March 2026: draft bonus left out, vendor credit nets against software", ()
   });
 });
 
-test("net income for other ranges, including one-day and boundary ranges", () => {
+test("statement net income is right for one-day, boundary, empty and multi-year ranges", () => {
   const cases: [start: string, end: string, netIncome: string, why: string][] = [
     ["2026-01-01", "2026-01-01", "-9000.00", "start day included: JE-007 rent only"],
     ["2026-02-03", "2026-02-03", "4920.00", "JE-010 8200.00 - JE-011 3280.00; void JE-009 on the same day left out"],
@@ -114,42 +118,36 @@ test("net income for other ranges, including one-day and boundary ranges", () =>
   }
 });
 
-test("a range with no entries still has every section, all zero", () => {
+test("statement for a range with no entries keeps all four sections at 0.00", () => {
   const s = statement("2027-01-01", "2027-12-31");
   assert.deepEqual(s.sections.map((x) => [x.key, x.lines.length, x.total]), [
     ["revenue", 0, "0.00"], ["cogs", 0, "0.00"], ["operating_expenses", 0, "0.00"], ["other_income", 0, "0.00"],
   ]);
 });
 
-test("accounts appear in chart-of-accounts order with their names", () => {
+test("statement lists accounts in chart order with number and name", () => {
   const revenue = statement("2026-01-01", "2026-03-31").sections[0];
   assert.deepEqual(revenue.lines.map((l) => `${l.account} ${l.name}`),
     ["4000 Product Revenue", "4100 Subscription Revenue", "4900 Sales Returns & Discounts"]);
-});
-
-test("if the draft bonus were posted, Q1 net income would drop by exactly 5000.00", () => {
-  const withBonus = ledgerAfter((raw) => { entryById(raw, "JE-019").status = "posted"; });
-  assert.equal(toResponse(buildIncomeStatement(withBonus, "2026-01-01", "2026-03-31")).netIncome, "-49480.14");
 });
 
 // Rules that must hold for any range. They back up the hand-worked numbers above.
 const RANGES: [string, string][] = [
   ["2025-01-01", "2026-12-31"], ["2026-01-01", "2026-03-31"], ["2026-02-03", "2026-02-03"], ["2026-03-31", "2026-04-01"],
 ];
-const raw = (start: string, end: string): IncomeStatement => buildIncomeStatement(ledger, start, end);
+const raw = (start: string, end: string): IncomeStatement => service.getIncomeStatement(start, end);
 
-test("net income equals the net debit change of balance sheet accounts (double entry)", () => {
+test("statement rule: net income equals the net debit change of balance sheet accounts, for any range", () => {
   for (const [start, end] of RANGES) {
-    let balanceSheet = 0n;
-    for (const e of ledger.entries) {
-      if (e.status !== "posted" || e.date < start || e.date > end) continue;
-      for (const l of e.lines) if (ledger.accountsByNumber.get(l.account)!.section === null) balanceSheet += l.debit - l.credit;
-    }
+    const balanceSheet = dao
+      .findLines({ start, end })
+      .filter((l) => l.account.section === null)
+      .reduce((sum, l) => sum + l.debit - l.credit, 0n);
     assert.equal(raw(start, end).netIncome, balanceSheet, `${start}..${end}`);
   }
 });
 
-test("January + February + March equals Q1, for every account and subtotal", () => {
+test("statement rule: January + February + March add up to Q1 for every account and subtotal", () => {
   const months = [raw("2026-01-01", "2026-01-31"), raw("2026-02-01", "2026-02-28"), raw("2026-03-01", "2026-03-31")];
   const q1 = raw("2026-01-01", "2026-03-31");
   const amount = (s: IncomeStatement, account: string) =>

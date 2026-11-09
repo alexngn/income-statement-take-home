@@ -17,28 +17,33 @@ Line numbers are as of when this was written; the function names are the stable 
 
 Flow: request -> Express router -> service -> DAO -> service -> aggregate helpers -> router -> response.
 
-- `backend/src/index.ts`: wiring at startup. `LedgerDao.fromFile()` reads `ledger.json` through `loadLedger()` (`backend/src/dao/ledgerFile.ts`), which validates it and turns every amount into BigInt cents (`toCents`, `backend/src/helpers/money.ts`). Bad data stops the server from starting. Then `new IncomeStatementService(dao)` and `createApp(service)`.
+- `backend/src/index.ts`: wiring at startup. `LedgerDao.fromFile()` reads `ledger.json` through `loadLedger()` (`backend/src/dao/ledgerFile.ts`), which validates it (including that each account's type fits its subtype, `TYPES_BY_SUBTYPE`) and turns every amount into BigInt cents (`toCents`, `backend/src/helpers/money.ts`). Bad data stops the server from starting. Then `new StatementService(dao)` and `createApp(service)`.
 - `backend/src/app.ts` `createApp`: mounts the router at `/income-statement`, plus a JSON error handler for unexpected errors (500).
 - `backend/src/routes/incomeStatement.routes.ts` `incomeStatementRouter`:
   - `GET /` reads `start` and `end` from the query string.
   - `parseDateRange` (`backend/src/helpers/dateRange.ts`): both must be real `YYYY-MM-DD` dates (`isValidDate`, `helpers/dates.ts`) and `start <= end`, else **400** `{ "error": "..." }`.
-  - Calls `service.getIncomeStatement(start, end)`, then `res.json(toResponse(statement))`.
+  - Calls `service.getStatement(INCOME_STATEMENT, { start, end })`, then `res.json(toResponse(statement))`.
 
 ## 4. The accounting
 
-`backend/src/services/incomeStatement.service.ts` `IncomeStatementService.getIncomeStatement(start, end)`:
+The statement is described as data. `backend/src/layouts/incomeStatement.ts` `INCOME_STATEMENT`:
+
+- `sections`: Revenue (subtypes `operating_revenue`, `contra_revenue`), Cost of goods sold (`cogs`), Operating expenses (`operating_expense`), Other income (`other_income`). An account no section selects is simply not on the statement.
+- `subtotals`, in order: `grossProfit = revenue - cogs`, `operatingIncome = grossProfit - operating_expenses`, `netIncome = operatingIncome + other_income`.
+
+`backend/src/services/statement.service.ts` `StatementService.getStatement(layout, { start, end })` builds any layout the same way:
 
 1. **Data from the DAO** (`backend/src/dao/ledger.dao.ts` `LedgerDao`):
-   - `getCompany()`, `getAccounts({ incomeStatementOnly: true })` (chart order).
-   - `findLines({ start, end, incomeStatementOnly: true })`: like a SQL query over a view. It returns journal lines of `posted` entries dated `start..end` (both days included), each already joined with its entry id, date and account. Drafts, voids and balance sheet accounts are filtered out here.
+   - `getCompany()`; `getAccounts(section.accounts)` for each section (an `AccountSelector` by type and/or subtype, chart order).
+   - `findLines({ start, end, accountNumbers })`: like a SQL query over a view. It returns journal lines of `posted` entries dated `start..end` (both days included; `start` may be left out to include everything up to `end`), each joined with its entry id, date and account. Drafts and voids are filtered out here.
+   - The service refuses a layout that puts one account in two sections.
 2. **Numbers from the aggregate helpers** (`backend/src/helpers/aggregate.ts`):
-   - `sumByAccount(lines)`: nets each account with `signedAmount`: revenue is credit minus debit, expenses are debit minus credit.
-   - `groupIntoSections(accounts, amounts)`: the four `SECTIONS` (revenue, cogs, operating_expenses, other_income) by account `subtype`; accounts with no activity are left out, every section is kept.
-   - `computeSubtotals(sections)`:
-     - Gross profit = Revenue - Cost of goods sold
-     - Operating income = Gross profit - Operating expenses
-     - Net income = Operating income + Other income
-3. Back in the router, `toResponse` (`backend/src/helpers/format.ts`) turns every cents value into a decimal string such as `"-44480.14"` (`formatCents`), so no amount ever passes through a JavaScript float.
+   - `sumByAccount(lines)` nets each account with `signedAmount`: credit-normal types (liability, equity, revenue) are credit minus debit; debit-normal types (asset, expense) are debit minus credit. So revenue and expenses both come out positive and the contra account 4900 comes out negative.
+   - `buildSection(layout, accounts, amounts)` per section: accounts with no activity are left out, every section is kept.
+   - `computeSubtotals(layout.subtotals, sections)`: each subtotal adds and subtracts section totals or earlier subtotals.
+3. Back in the router, `toResponse` (`backend/src/helpers/format.ts`) turns every cents value into a decimal string such as `"-44480.14"` (`formatCents`) and puts subtotals at the top level under their keys, so no amount ever passes through a JavaScript float.
+
+To add another statement: write a new layout object, and a route that passes it (and the period) to `getStatement`.
 
 ## 5. The response comes back
 

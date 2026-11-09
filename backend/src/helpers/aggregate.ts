@@ -1,14 +1,8 @@
-// Pure functions that turn journal lines into income statement numbers, in cents.
+// Pure functions that turn journal lines into statement numbers, in cents.
 
 import type { LedgerLine } from "../dao/ledger.dao.ts";
-import type { Account, SectionKey } from "../dao/ledgerFile.ts";
-
-export const SECTIONS: { key: SectionKey; title: string }[] = [
-  { key: "revenue", title: "Revenue" },
-  { key: "cogs", title: "Cost of goods sold" },
-  { key: "operating_expenses", title: "Operating expenses" },
-  { key: "other_income", title: "Other income" },
-];
+import type { Account, AccountType } from "../dao/ledgerFile.ts";
+import type { SectionLayout, SubtotalLayout } from "../layouts/layout.ts";
 
 export interface StatementLine {
   account: string;
@@ -17,24 +11,22 @@ export interface StatementLine {
 }
 
 export interface StatementSection {
-  key: SectionKey;
+  key: string;
   title: string;
   lines: StatementLine[];
   total: bigint;
 }
 
-export interface Subtotals {
-  grossProfit: bigint;
-  operatingIncome: bigint;
-  netIncome: bigint;
-}
+/** Types that increase with credits. The others (asset, expense) increase with debits. */
+const CREDIT_NORMAL: AccountType[] = ["liability", "equity", "revenue"];
 
 /**
- * The line's effect on the statement, with the account's normal sign:
- * revenue is positive when credits exceed debits, expenses when debits exceed credits.
+ * The line's effect on its account, with the account's normal sign: positive when the line
+ * increases the account. So revenue is credit minus debit and expenses are debit minus credit;
+ * a contra account (returns on a revenue account) comes out negative.
  */
 export function signedAmount(line: LedgerLine): bigint {
-  if (line.account.type === "revenue") return line.credit - line.debit;
+  if (CREDIT_NORMAL.includes(line.account.type)) return line.credit - line.debit;
   return line.debit - line.credit;
 }
 
@@ -48,20 +40,26 @@ export function sumByAccount(lines: LedgerLine[]): Map<string, bigint> {
   return totals;
 }
 
-/** Every section in statement order. Accounts keep chart order; accounts with no activity are left out. */
-export function groupIntoSections(accounts: Account[], amounts: Map<string, bigint>): StatementSection[] {
-  return SECTIONS.map(({ key, title }) => {
-    const lines = accounts
-      .filter((a) => a.section === key && amounts.has(a.number))
-      .map((a) => ({ account: a.number, name: a.name, amount: amounts.get(a.number)! }));
-    return { key, title, lines, total: lines.reduce((sum, l) => sum + l.amount, 0n) };
-  });
+/** One section: its accounts in chart order (those with no activity left out) and their total. */
+export function buildSection(layout: SectionLayout, accounts: Account[], amounts: Map<string, bigint>): StatementSection {
+  const lines = accounts
+    .filter((a) => amounts.has(a.number))
+    .map((a) => ({ account: a.number, name: a.name, amount: amounts.get(a.number)! }));
+  return { key: layout.key, title: layout.title, lines, total: lines.reduce((sum, l) => sum + l.amount, 0n) };
 }
 
-export function computeSubtotals(sections: StatementSection[]): Subtotals {
-  const total = (key: SectionKey) => sections.find((s) => s.key === key)!.total;
-  const grossProfit = total("revenue") - total("cogs");
-  const operatingIncome = grossProfit - total("operating_expenses");
-  const netIncome = operatingIncome + total("other_income");
-  return { grossProfit, operatingIncome, netIncome };
+/** Each subtotal in order, from section totals and earlier subtotals. */
+export function computeSubtotals(layouts: SubtotalLayout[], sections: StatementSection[]): Record<string, bigint> {
+  const known = new Map<string, bigint>(sections.map((s) => [s.key, s.total]));
+  const value = (key: string) => {
+    if (!known.has(key)) throw new Error(`Subtotal refers to unknown key "${key}"`);
+    return known.get(key)!;
+  };
+  const subtotals: Record<string, bigint> = {};
+  for (const { key, plus, minus } of layouts) {
+    const amount = plus.reduce((sum, k) => sum + value(k), 0n) - minus.reduce((sum, k) => sum + value(k), 0n);
+    subtotals[key] = amount;
+    known.set(key, amount);
+  }
+  return subtotals;
 }

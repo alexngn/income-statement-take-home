@@ -35,15 +35,21 @@ test("DAO join: each line carries its entry id, date and full account (JE-002 de
   assert.equal(first.credit, 0n);
 });
 
-test("DAO incomeStatementOnly: drops balance sheet lines (2026-01-05 keeps 4000 and 5000, drops 1100 and 1200)", () => {
-  const all = dao.findLines({ start: "2026-01-05", end: "2026-01-05" });
-  const statementOnly = dao.findLines({ start: "2026-01-05", end: "2026-01-05", incomeStatementOnly: true });
-  assert.deepEqual(all.map((l) => l.account.number), ["1100", "4000", "5000", "1200"]);
-  assert.deepEqual(statementOnly.map((l) => l.account.number), ["4000", "5000"]);
+test("DAO date range: leaving out start includes everything up to end (through 2025-12-31 is JE-001 only)", () => {
+  assert.deepEqual([...new Set(dao.findLines({ end: "2025-12-31" }).map((l) => l.entryId))], ["JE-001"]);
 });
 
-test("DAO getAccounts: incomeStatementOnly returns the 9 revenue and expense accounts in chart order", () => {
-  assert.deepEqual(dao.getAccounts({ incomeStatementOnly: true }).map((a) => a.number),
-    ["4000", "4100", "4900", "5000", "6000", "6100", "6200", "6300", "7000"]);
-  assert.equal(dao.getAccounts().length, 15);
+test("DAO accountNumbers: returns only lines on the listed accounts (2026-01-05 with 4000 and 5000 drops 1100 and 1200)", () => {
+  const all = dao.findLines({ start: "2026-01-05", end: "2026-01-05" });
+  const some = dao.findLines({ start: "2026-01-05", end: "2026-01-05", accountNumbers: ["4000", "5000"] });
+  assert.deepEqual(all.map((l) => l.account.number), ["1100", "4000", "5000", "1200"]);
+  assert.deepEqual(some.map((l) => l.account.number), ["4000", "5000"]);
+});
+
+test("DAO getAccounts: selects by subtype, by type, or both, in chart order", () => {
+  const numbers = (selector: Parameters<typeof dao.getAccounts>[0]) => dao.getAccounts(selector).map((a) => a.number);
+  assert.deepEqual(numbers({ subtypes: ["operating_expense"] }), ["6000", "6100", "6200", "6300"]);
+  assert.deepEqual(numbers({ types: ["revenue"] }), ["4000", "4100", "4900", "7000"]);
+  assert.deepEqual(numbers({ types: ["revenue"], subtypes: ["other_income"] }), ["7000"]);
+  assert.equal(numbers({}).length, 15);
 });

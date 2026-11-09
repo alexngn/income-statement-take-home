@@ -17,7 +17,8 @@ import { fileURLToPath } from "node:url";
 import { LedgerDao } from "../dao/ledger.dao.ts";
 import { isValidDate } from "../helpers/dates.ts";
 import { formatCents } from "../helpers/money.ts";
-import { IncomeStatementService, type IncomeStatement } from "../services/incomeStatement.service.ts";
+import { INCOME_STATEMENT } from "../layouts/incomeStatement.ts";
+import { StatementService, type Statement } from "../services/statement.service.ts";
 
 /** Minimal CSV parser: commas, double-quoted fields, "" as an escaped quote. */
 export function parseCsv(text: string): string[][] {
@@ -59,16 +60,16 @@ export function displayToCents(text: string): bigint | null {
 }
 
 /** Labels of the spreadsheet's total rows, mapped to the app's value. */
-function totalsByLabel(statement: IncomeStatement): Map<string, bigint> {
+function totalsByLabel(statement: Statement): Map<string, bigint> {
   const section = (key: string) => statement.sections.find((s) => s.key === key)!.total;
   return new Map([
     ["net revenue", section("revenue")],
     ["total cost of goods sold", section("cogs")],
-    ["gross profit", statement.grossProfit],
+    ["gross profit", statement.subtotals.grossProfit],
     ["total operating expenses", section("operating_expenses")],
-    ["operating income", statement.operatingIncome],
+    ["operating income", statement.subtotals.operatingIncome],
     ["total other income", section("other_income")],
-    ["net income", statement.netIncome],
+    ["net income", statement.subtotals.netIncome],
   ]);
 }
 
@@ -78,7 +79,7 @@ interface DiffRow {
   app: bigint | null;
 }
 
-export function diffSpreadsheet(csvText: string, service = new IncomeStatementService(LedgerDao.fromFile())) {
+export function diffSpreadsheet(csvText: string, service = new StatementService(LedgerDao.fromFile())) {
   const rows = parseCsv(csvText);
   const findDate = (prefix: string) => {
     const row = rows.find((r) => r[0]?.trim().toLowerCase().startsWith(prefix));
@@ -90,7 +91,7 @@ export function diffSpreadsheet(csvText: string, service = new IncomeStatementSe
   };
   const start = findDate("start date");
   const end = findDate("end date");
-  const statement = service.getIncomeStatement(start, end);
+  const statement = service.getStatement(INCOME_STATEMENT, { start, end });
 
   const appByAccount = new Map<string, bigint>();
   for (const s of statement.sections) for (const l of s.lines) appByAccount.set(l.account, l.amount);

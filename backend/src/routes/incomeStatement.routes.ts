@@ -4,9 +4,10 @@
 import { Router } from "express";
 import { parseDateRange } from "../helpers/dateRange.ts";
 import { toResponse } from "../helpers/format.ts";
-import type { IncomeStatementService } from "../services/incomeStatement.service.ts";
+import { INCOME_STATEMENT } from "../layouts/incomeStatement.ts";
+import type { StatementService } from "../services/statement.service.ts";
 
-export function incomeStatementRouter(service: IncomeStatementService): Router {
+export function incomeStatementRouter(service: StatementService): Router {
   const router = Router();
 
   router.get("/", (req, res) => {
@@ -15,7 +16,7 @@ export function incomeStatementRouter(service: IncomeStatementService): Router {
       res.status(400).json({ error: range.error });
       return;
     }
-    const statement = service.getIncomeStatement(range.start, range.end);
+    const statement = service.getStatement(INCOME_STATEMENT, range);
     res.json(toResponse(statement));
   });
 

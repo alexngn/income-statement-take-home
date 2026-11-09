@@ -20,14 +20,14 @@ import { createApp } from "../src/app.ts";
 import { LedgerDao } from "../src/dao/ledger.dao.ts";
 import { loadLedger } from "../src/dao/ledgerFile.ts";
 import { toResponse } from "../src/helpers/format.ts";
-import { entryById, ledgerAfter, serviceFor } from "./realLedger.ts";
+import { entryById, incomeStatementFor, ledgerAfter, serviceFor } from "./realLedger.ts";
 
 const DUPLICATE_DAY = "2026-02-03"; // JE-009 (void), JE-010 and JE-011 (posted)
 const RETURNED_CHECK_DAY = "2026-03-18"; // JE-025 (void) only
 const ledger = loadLedger();
 const dao = new LedgerDao(ledger);
 const statement = (l = ledger, start = "2026-01-01", end = "2026-03-31") =>
-  toResponse(serviceFor(l).getIncomeStatement(start, end));
+  toResponse(incomeStatementFor(l, start, end));
 const productRevenue = (s: ReturnType<typeof statement>) =>
   s.sections.flatMap((x) => x.lines).find((l) => l.account === "4000")?.amount;
 const entryIds = (lines: { entryId: string }[]) => [...new Set(lines.map((l) => l.entryId))];

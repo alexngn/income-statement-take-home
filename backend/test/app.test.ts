@@ -3,12 +3,12 @@ import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { createApp } from "../src/app.ts";
 import { LedgerDao } from "../src/dao/ledger.dao.ts";
-import { IncomeStatementService } from "../src/services/incomeStatement.service.ts";
+import { StatementService } from "../src/services/statement.service.ts";
 
 let base = "";
 let close = () => {};
 before(async () => {
-  const server = createApp(new IncomeStatementService(LedgerDao.fromFile())).listen(0);
+  const server = createApp(new StatementService(LedgerDao.fromFile())).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
   close = () => server.close();

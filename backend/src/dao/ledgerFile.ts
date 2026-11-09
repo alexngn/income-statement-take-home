@@ -7,16 +7,16 @@ import { isValidDate } from "../helpers/dates.ts";
 import { toCents } from "../helpers/money.ts";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
-export type SectionKey = "revenue" | "cogs" | "operating_expenses" | "other_income";
+export type EntryStatus = "posted" | "draft" | "void";
 
-/** Which income statement section each subtype goes in. null = balance sheet, not on the statement. */
-export const SECTION_BY_SUBTYPE: Record<string, SectionKey | null> = {
-  operating_revenue: "revenue",
-  contra_revenue: "revenue",
-  cogs: "cogs",
-  operating_expense: "operating_expenses",
-  other_income: "other_income",
-  balance_sheet: null,
+/** The subtypes in the data dictionary, and the account types each one allows. */
+export const TYPES_BY_SUBTYPE: Record<string, AccountType[]> = {
+  operating_revenue: ["revenue", "expense"],
+  contra_revenue: ["revenue", "expense"],
+  cogs: ["revenue", "expense"],
+  operating_expense: ["revenue", "expense"],
+  other_income: ["revenue", "expense"],
+  balance_sheet: ["asset", "liability", "equity"],
 };
 
 const ACCOUNT_TYPES = ["asset", "liability", "equity", "revenue", "expense"];
@@ -28,7 +28,6 @@ export interface Account {
   type: AccountType;
   subtype: string;
   isActive: boolean;
-  section: SectionKey | null;
 }
 
 export interface JournalLine {
@@ -40,7 +39,7 @@ export interface JournalLine {
 export interface JournalEntry {
   id: string;
   date: string; // YYYY-MM-DD
-  status: "posted" | "draft" | "void";
+  status: EntryStatus;
   memo: string;
   lines: JournalLine[];
 }
@@ -70,11 +69,10 @@ export function parseLedger(raw: any): Ledger {
     const where = `Account ${a.number}`;
     if (accountsByNumber.has(a.number)) throw new Error(`${where}: duplicate account number`);
     if (!ACCOUNT_TYPES.includes(a.type)) throw new Error(`${where}: unknown type "${a.type}"`);
-    if (!(a.subtype in SECTION_BY_SUBTYPE)) throw new Error(`${where}: unknown subtype "${a.subtype}"`);
-    const section = SECTION_BY_SUBTYPE[a.subtype];
-    // The sign on the statement comes from the type, so the type must fit the section.
-    const onStatement = a.type === "revenue" || a.type === "expense";
-    if (onStatement !== (section !== null)) {
+    const allowedTypes = TYPES_BY_SUBTYPE[a.subtype];
+    if (!allowedTypes) throw new Error(`${where}: unknown subtype "${a.subtype}"`);
+    // Statements place accounts by subtype and sign them by type, so the two must agree.
+    if (!allowedTypes.includes(a.type)) {
       throw new Error(`${where}: type "${a.type}" does not fit subtype "${a.subtype}"`);
     }
     const account: Account = {
@@ -83,7 +81,6 @@ export function parseLedger(raw: any): Ledger {
       type: a.type,
       subtype: a.subtype,
       isActive: a.is_active,
-      section,
     };
     accounts.push(account);
     accountsByNumber.set(account.number, account);

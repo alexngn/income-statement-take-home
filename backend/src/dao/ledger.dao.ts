@@ -3,27 +3,45 @@
 //
 //   SELECT line.*, entry.id, entry.date, account.*
 //   FROM journal_lines line JOIN journal_entries entry JOIN accounts account
-//   WHERE entry.status = 'posted' AND entry.date BETWEEN :start AND :end
+//   WHERE entry.status = :status AND entry.date BETWEEN :start AND :end
+//     AND account.number IN (:accountNumbers)
 //
 // If the data moves to a database, only this file changes.
 
-import { LEDGER_PATH, loadLedger, type Account, type JournalEntry, type Ledger } from "./ledgerFile.ts";
+import {
+  LEDGER_PATH,
+  loadLedger,
+  type Account,
+  type AccountType,
+  type EntryStatus,
+  type Ledger,
+} from "./ledgerFile.ts";
 
 /** One journal line, already joined with its entry and its account. */
 export interface LedgerLine {
   entryId: string;
   date: string; // YYYY-MM-DD
-  status: JournalEntry["status"];
+  status: EntryStatus;
   account: Account;
   debit: bigint; // cents
   credit: bigint; // cents
 }
 
+/** Picks accounts by type and/or subtype. Both lists must match when both are given; empty = all. */
+export interface AccountSelector {
+  types?: AccountType[];
+  subtypes?: string[];
+}
+
 export interface LineQuery {
-  start: string; // YYYY-MM-DD, included
+  start?: string; // YYYY-MM-DD, included. Leave out to start from the first entry.
   end: string; // YYYY-MM-DD, included
-  status?: JournalEntry["status"]; // default "posted"
-  incomeStatementOnly?: boolean; // default false: true leaves out balance sheet accounts
+  status?: EntryStatus; // default "posted"
+  accountNumbers?: string[]; // default: every account
+}
+
+export function matchesSelector(account: Account, { types, subtypes }: AccountSelector): boolean {
+  return (!types || types.includes(account.type)) && (!subtypes || subtypes.includes(account.subtype));
 }
 
 export class LedgerDao {
@@ -54,20 +72,21 @@ export class LedgerDao {
     return { company: this.#ledger.company, currency: this.#ledger.currency };
   }
 
-  /** Accounts in chart-of-accounts order. */
-  getAccounts({ incomeStatementOnly = false } = {}): Account[] {
-    return this.#ledger.accounts.filter((a) => !incomeStatementOnly || a.section !== null);
+  /** Accounts in chart-of-accounts order, optionally only those the selector picks. */
+  getAccounts(selector: AccountSelector = {}): Account[] {
+    return this.#ledger.accounts.filter((a) => matchesSelector(a, selector));
   }
 
   /** Journal lines whose entry has the status (default posted) and is dated start..end, both days included. */
-  findLines({ start, end, status = "posted", incomeStatementOnly = false }: LineQuery): LedgerLine[] {
+  findLines({ start, end, status = "posted", accountNumbers }: LineQuery): LedgerLine[] {
+    const wanted = accountNumbers && new Set(accountNumbers);
     // YYYY-MM-DD strings sort in calendar order, so plain string comparison works.
     return this.#lines.filter(
       (l) =>
         l.status === status &&
-        l.date >= start &&
+        (start === undefined || l.date >= start) &&
         l.date <= end &&
-        (!incomeStatementOnly || l.account.section !== null),
+        (!wanted || wanted.has(l.account.number)),
     );
   }
 }

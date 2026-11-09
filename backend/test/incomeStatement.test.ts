@@ -2,16 +2,16 @@
 // names the journal entries it comes from, so it can be checked without running anything.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LedgerDao } from "../src/dao/ledger.dao.ts";
+import { LedgerDao, matchesSelector } from "../src/dao/ledger.dao.ts";
 import { loadLedger } from "../src/dao/ledgerFile.ts";
 import { toResponse } from "../src/helpers/format.ts";
-import type { IncomeStatement } from "../src/services/incomeStatement.service.ts";
-import { serviceFor } from "./realLedger.ts";
+import { INCOME_STATEMENT } from "../src/layouts/incomeStatement.ts";
+import type { Statement } from "../src/services/statement.service.ts";
+import { incomeStatementFor } from "./realLedger.ts";
 
 const ledger = loadLedger();
 const dao = new LedgerDao(ledger);
-const service = serviceFor(ledger);
-const statement = (start: string, end: string) => toResponse(service.getIncomeStatement(start, end));
+const statement = (start: string, end: string) => toResponse(incomeStatementFor(ledger, start, end));
 
 /** The statement as plain rows: { "4000": "35650.75", ..., revenue: "...", netIncome: "..." }. */
 function rows(s: ReturnType<typeof statement>) {
@@ -20,9 +20,7 @@ function rows(s: ReturnType<typeof statement>) {
     for (const line of section.lines) out[line.account] = line.amount;
     out[section.key] = section.total;
   }
-  out.grossProfit = s.grossProfit;
-  out.operatingIncome = s.operatingIncome;
-  out.netIncome = s.netIncome;
+  for (const key of ["grossProfit", "operatingIncome", "netIncome"]) out[key] = s[key] as string;
   return out;
 }
 
@@ -135,27 +133,30 @@ test("statement lists accounts in chart order with number and name", () => {
 const RANGES: [string, string][] = [
   ["2025-01-01", "2026-12-31"], ["2026-01-01", "2026-03-31"], ["2026-02-03", "2026-02-03"], ["2026-03-31", "2026-04-01"],
 ];
-const raw = (start: string, end: string): IncomeStatement => service.getIncomeStatement(start, end);
+const raw = (start: string, end: string): Statement => incomeStatementFor(ledger, start, end);
+const onStatement = (account: (typeof ledger.accounts)[number]) =>
+  INCOME_STATEMENT.sections.some((s) => matchesSelector(account, s.accounts));
 
-test("statement rule: net income equals the net debit change of balance sheet accounts, for any range", () => {
+test("statement rule: net income equals the net debit change of every account not on the statement, for any range", () => {
   for (const [start, end] of RANGES) {
-    const balanceSheet = dao
+    // Every entry balances, so what the statement accounts gain, the other accounts must show.
+    const otherAccounts = dao
       .findLines({ start, end })
-      .filter((l) => l.account.section === null)
+      .filter((l) => !onStatement(l.account))
       .reduce((sum, l) => sum + l.debit - l.credit, 0n);
-    assert.equal(raw(start, end).netIncome, balanceSheet, `${start}..${end}`);
+    assert.equal(raw(start, end).subtotals.netIncome, otherAccounts, `${start}..${end}`);
   }
 });
 
 test("statement rule: January + February + March add up to Q1 for every account and subtotal", () => {
   const months = [raw("2026-01-01", "2026-01-31"), raw("2026-02-01", "2026-02-28"), raw("2026-03-01", "2026-03-31")];
   const q1 = raw("2026-01-01", "2026-03-31");
-  const amount = (s: IncomeStatement, account: string) =>
+  const amount = (s: Statement, account: string) =>
     s.sections.flatMap((x) => x.lines).find((l) => l.account === account)?.amount ?? 0n;
   for (const account of ledger.accounts) {
     assert.equal(months.reduce((t, m) => t + amount(m, account.number), 0n), amount(q1, account.number), account.number);
   }
-  for (const key of ["grossProfit", "operatingIncome", "netIncome"] as const) {
-    assert.equal(months.reduce((t, m) => t + m[key], 0n), q1[key], key);
+  for (const key of ["grossProfit", "operatingIncome", "netIncome"]) {
+    assert.equal(months.reduce((t, m) => t + m.subtotals[key], 0n), q1.subtotals[key], key);
   }
 });

@@ -14,13 +14,13 @@ import { createApp } from "../src/app.ts";
 import { LedgerDao } from "../src/dao/ledger.dao.ts";
 import { loadLedger } from "../src/dao/ledgerFile.ts";
 import { toResponse } from "../src/helpers/format.ts";
-import { entryById, ledgerAfter, serviceFor } from "./realLedger.ts";
+import { entryById, incomeStatementFor, ledgerAfter, serviceFor } from "./realLedger.ts";
 
 const DRAFT_DAY = "2026-03-15";
 const ledger = loadLedger();
 const dao = new LedgerDao(ledger);
 const statement = (l = ledger, start = "2026-01-01", end = "2026-03-31") =>
-  toResponse(serviceFor(l).getIncomeStatement(start, end));
+  toResponse(incomeStatementFor(l, start, end));
 const salaries = (s: ReturnType<typeof statement>) =>
   s.sections.flatMap((x) => x.lines).find((l) => l.account === "6000")?.amount;
 

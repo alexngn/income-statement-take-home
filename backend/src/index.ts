@@ -1,10 +1,10 @@
 import { createApp } from "./app.ts";
 import { LedgerDao } from "./dao/ledger.dao.ts";
-import { IncomeStatementService } from "./services/incomeStatement.service.ts";
+import { StatementService } from "./services/statement.service.ts";
 
 // Wiring: DAO -> service -> Express app.
 const dao = LedgerDao.fromFile(); // throws, and the server does not start, if ledger.json is bad
-const app = createApp(new IncomeStatementService(dao));
+const app = createApp(new StatementService(dao));
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, (error?: Error) => {

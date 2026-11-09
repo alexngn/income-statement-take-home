@@ -2,7 +2,8 @@
 
 ## Overview
 Campfire take-home: income statement (P&L) for any date range from `ledger.json`.
-Planned stack: Node backend (`GET /income-statement?start&end`), Angular frontend. Local git only.
+Node/Express backend (`GET /income-statement?start&end`, port 3000) and Angular frontend (port 4200). Local git only.
+Root `package.json`: `npm install` (postinstall installs backend/ and frontend/), `npm start` (both via concurrently), `npm test` (backend), `npm run diff`. See `README.md`.
 
 ## Module map
 - `ledger.json`: chart of accounts + journal entries (copied verbatim from the assignment README).

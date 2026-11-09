@@ -45,6 +45,7 @@ How the statement is built:
 - It helped scaffold the Express and Angular apps, write the spreadsheet formulas and the diff tool, and draft tests.
 - It struggled to question whether a POST request was necessary when a GET request already did the same thing. That led to churn, and I had to remove the POST request.
 - It named tests after what the test does, not what it was testing for. That gave overly technical names instead of names that simply say draft and voided entries are filtered out, so I had them renamed.
+- It struggled to make the code extensible. It was tunnel-visioned on coupling the code to just the requirements, such as an income-statement-only service and a hard-coded subtype-to-section map. I had it rewritten so a statement is built from a layout and a period passed in as parameters.
 
 ## With more time
 

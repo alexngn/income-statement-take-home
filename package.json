@@ -1,0 +1,17 @@
+{
+  "name": "income-statement",
+  "private": true,
+  "description": "Income statement take-home: Node/Express backend and Angular frontend",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "postinstall": "npm --prefix backend install && npm --prefix frontend install",
+    "start": "concurrently --names backend,frontend --prefix-colors blue,magenta \"npm --prefix backend start\" \"npm --prefix frontend start\"",
+    "test": "npm --prefix backend test",
+    "diff": "npm --prefix backend run diff"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.5"
+  }
+}
